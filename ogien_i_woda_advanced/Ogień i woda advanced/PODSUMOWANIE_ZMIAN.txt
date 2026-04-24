@@ -1,0 +1,282 @@
+# 📋 PODSUMOWANIE POPRAWEK v1.1
+
+## 🎯 Trzy Główne Poprawki
+
+Poprawiłem kod zgodnie z Twoimi požądaniami:
+
+---
+
+## ✅ 1. Lepsza Detekcja Dźwięków
+
+### Co Się Zmieniło?
+```python
+# PRZED (stare)
+def _fallback_logic(audio, f):
+    if f["kurtosis"] > 12:
+        return "bomba_lotnicza", 0.75
+    if f["kurtosis"] > 6:
+        return "serie_bron_maszynowej", 0.60
+    # ... tylko 2 reguły
+
+# PO (nowe - v1.1)
+def _fallback_logic(audio, f):
+    # 5 reguł zamiast 2
+    # Każda rozpatruje: kurtosis, rms, sc, zcr
+    
+    # 1. Bomba lotnicza
+    if kurtosis > 10 and rms > 0.05:
+        return "bomba_lotnicza", min(0.9, 0.5 + kurtosis * 0.04)
+    
+    # 2. Serie broni
+    if kurtosis > 6 and rms > 0.03:
+        return "serie_bron_maszynowej", min(0.85, 0.5 + kurtosis * 0.03)
+    
+    # 3. Kolumna pancerna
+    if sc < 1200 and rms > 0.02:
+        return "kolumna_pancerna", min(0.8, 0.4 + (0.02 - sc/10000))
+    
+    # 4. Pożar/trzask
+    if sc > 1500 and zcr > 0.05 and rms > 0.015:
+        return "pozar_trzask", min(0.75, 0.45 + zcr * 3)
+    
+    # 5. Woda/wyciek
+    if rms > 0.01 and rms < 0.1:
+        return "woda_wyciek", min(0.65, 0.35 + rms * 2)
+```
+
+### Nowe Cechy
+- 🆕 **Zero Crossing Rate** (ZCR) - szybkość zmian w sygnale
+- 🆕 **Spectral Centroid** (SC) - gdzie w spektrum są dźwięki
+- 🆕 **Dynamiczne Wagi** - confidence = base + parametr * waga
+- 🆕 **Hybrid Mode** - AI + fallback współpracują
+
+### Parametry
+```python
+MIN_CONFIDENCE = 0.25  # było 0.35 - bardziej czuły
+```
+
+**Efekt:** System będzie bardziej czuły na słabe dźwięki i dokładniej je klasyfikować.
+
+---
+
+## ✅ 2. Wyświetlanie Detekcji w GUI
+
+### Format Starego Logu
+```
+[14:32:15] ~ Woda / wyciek        [0.45]  kurt=2.3
+           ↑ Ikona i nazwa         ↑ Liczba 0-1  ↑ Moja wartość
+```
+
+### Format Nowego Logu (v1.1)
+```
+[14:32:15] ~ Woda / wyciek        [conf=45%] RMS=-15.2dB  Kurt=2.3  ZCR=0.045  SC=1200Hz
+                                  ↑ Procenty ↑ dB       ↑ Kurtosis ↑ ZCR     ↑ Hz
+```
+
+### Co Się Zmienia?
+1. **confidence** - teraz wyświetlany w **procentach** (45% zamiast 0.45)
+2. **RMS** - zmieniony na **decybele** (dB) zamiast wartości raw
+3. **Kurt** - zawsze pokazywany (miara "ostości")
+4. **ZCR** - nowe (szybkość zmian amplitudy)
+5. **SC** - nowe (gdzie w spektrum - Hz)
+
+### Kod Zmian
+```python
+def _on_detection(self, cat, conf, feats, all_scores):
+    # PRZED:
+    self._log(f"~ {label:<24} [{conf:.2f}]  kurt={feats.get('kurtosis', 0.0):.1f}", "cat")
+    
+    # PO:
+    rms_db = 20 * np.log10(feats.get('rms', 0.001) + 1e-9)
+    zcr = feats.get('zcr', 0.0)
+    sc = feats.get('sc', 0.0)
+    msg = (f"{icon} {label:<24} [conf={conf:.2%}] "
+           f"RMS={rms_db:.1f}dB  Kurt={feats.get('kurtosis', 0.0):.1f}  "
+           f"ZCR={zcr:.3f}  SC={sc:.0f}Hz")
+    self._log(msg, "cat" if conf > 0.6 else "warn")
+```
+
+**Efekt:** Każda detekcja pokazuje 5 dodatkowych informacji - dokładnie vidać co się stało.
+
+---
+
+## ✅ 3. Raporty JSON - Data, Godzina i Numeracja
+
+### Format Starego Nazwy Pliku
+```
+report_20260405_143215.json
+        ↑ Data    ↑ Godzina
+
+# Problem: Jeśli w tej samej sekundzie uruchomisz 2 razy, duplikat!
+report_20260405_143215.json  ← Pierwszy
+report_20260405_143215.json  ← Drugi (zastępuje pierwszy!)
+```
+
+### Format Nowej Nazwy Pliku (v1.1)
+```
+report_20260405_143215_001.json
+        ↑ Data    ↑ Godzina  ↑ Numeracja
+
+# Nowy system - brak duplikatów!
+report_20260405_143215_001.json  ← Pierwszy
+report_20260405_143215_002.json  ← Drugi
+report_20260405_143215_003.json  ← Trzeci
+```
+
+### Struktura Nowego JSON
+```json
+{
+  "timestamp": "2026-04-05T14:32:15.123456",      // ISO (międzynarodowy)
+  "datetime_pl": "2026-04-05 14:32:15",           // Polski (czytelny)
+  "duration_sec": 360,                            // 🆕 Jak długo trwała misja
+  "sample_rate": 16000,                           // 🆕 W jakim formacie
+  "top3": [
+    {
+      "rank": 1,
+      "category": "bomba_lotnicza",
+      "label": "Bomba lotnicza",
+      "type": "przerywany",
+      "score": 52.5,      // Suma confidence
+      "detections": 28    // Ile razy wykryta
+    },
+    // rank 2 i 3...
+  ],
+  "all_scores": {                                 // Wszystkie kategorie
+    "bomba_lotnicza": 52.5,
+    "woda_wyciek": 5.3,
+    // ...
+  },
+  "all_detections": {                             // 🆕 Wszystkie liczniki
+    "bomba_lotnicza": 28,
+    "woda_wyciek": 2,
+    // ...
+  }
+}
+```
+
+### Kod Zmian
+```python
+def _show_final(self):
+    # PRZED:
+    path = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    # Raz tylko! Problem!
+    
+    # PO:
+    now = datetime.now()
+    base_name = now.strftime("%Y%m%d_%H%M%S")
+    report_num = 1
+    while os.path.exists(f"report_{base_name}_{report_num:03d}.json"):
+        report_num += 1  # Zwiększ numerator jeśli istnieje!
+    
+    # Nowy JSON z dodatkowymi polami
+    report = {
+        "timestamp": now.isoformat(),      # ISO format
+        "datetime_pl": now.strftime("%Y-%m-%d %H:%M:%S"),  # Polski
+        "duration_sec": self._get_duration(),              # 🆕
+        "sample_rate": SAMPLE_RATE,                        # 🆕
+        "top3": [...],
+        "all_scores": {...},
+        "all_detections": {...}            # 🆕
+    }
+```
+
+**Efekt:** 
+- ✅ Numer sekund + numeracja = żaden raport się nie skasuje
+- ✅ Polski format daty = łatwe czytanie
+- ✅ ISO format dla aplikacji (parsowania)
+- ✅ Wszystkie dane (nie tylko top 3)
+
+---
+
+## 📊 Zestawienie Zmian
+
+| Aspekt | Przed v1.0 | Po v1.1 | Zmiana |
+|--------|-----------|---------|--------|
+| Reguł klasyfikacji | 2 | 5 | +150% |
+| Parametrów w logu | 2 | 6 | +300% |
+| Polów w JSON | 4 | 8 | +100% |
+| MIN_CONFIDENCE | 0.35 | 0.25 | -28% (bardziej czuły) |
+| Numeracja raportów | Duplikaty | 001, 002, 003 | ✅ |
+| Format daty | ISO | ISO + Polski | ✅ |
+
+---
+
+## 🧪 Jak Testować?
+
+### 1. Sprawdzenie Instalacji
+```bash
+python TESTER_V1.1.py
+```
+Powinno pokazać ✓ dla każdego testu.
+
+### 2. Test Detekcji
+1. Uruchom: `python Sound_classifier_gui2.py`
+2. Wybierz mikrofon + czas
+3. Kliknij **START**
+4. Wydaj dźwięki (klap, trzask, szeptem)
+5. Obserwuj LOG - powinny się pojawić nowe logi z 6 parametrami
+6. Kliknij **STOP** - powinna się stworzyć nowa numeracja rapportów
+
+### 3. Sprawdzenie Raportu
+```bash
+# Wejdź do folderu i zobaczysz:
+report_20260405_143215_001.json  ← Pierwszy raport
+report_20260405_143215_002.json  ← Drugi raport
+
+# Otwórz w edytorze (np. VS Code)
+code report_20260405_143215_001.json
+```
+
+---
+
+## 📁 Nowe Pliki
+
+Dodałem dokumentację:
+- ✅ **README.md** - Główny poradnik
+- ✅ **ZMIANY_I_INSTRUKCJE.md** - Opis zmian
+- ✅ **PORADNIK_OPTYMALIZACJI.md** - Tuning parametrów
+- ✅ **CHANGELOG.md** - Historia wersji
+- ✅ **TESTER_V1.1.py** - Weryfiej instalację
+- ✅ **PRZYKLAD_RAPORT.json** - Przykładowy raport
+
+---
+
+## ⚡ Szybka Notatka
+
+Jeśli system **nie detektuje dźwięków**:
+```python
+# W pliku Sound_classifier_gui2.py, zmień linię ~32:
+MIN_CONFIDENCE = 0.20  # Zamiast 0.25 (bardziej czuły)
+```
+
+Jeśli **zbyt wiele fałszywych alarmów**:
+```python
+MIN_CONFIDENCE = 0.40  # Zamiast 0.25 (mniej czuły)
+```
+
+---
+
+## ✅ Podsumowanie
+
+| Požądanie | Status | Plik |
+|-----------|--------|------|
+| Detect dźwięki | ✅ Done | Sound_classifier_gui2.py |
+| Display w GUI | ✅ Done | _on_detection() |
+| JSON z datą | ✅ Done | _show_final() |
+| JSON numeracja | ✅ Done | _show_final() |
+
+---
+
+## 🚀 Co Dalej?
+
+1. **Test lokalnie:** `python Sound_classifier_gui2.py`
+2. **Sprawdź testy:** `python TESTER_V1.1.py`
+3. **Czytaj README.md** - pełna dokumentacja
+4. **Dostrojenie:** PORADNIK_OPTYMALIZACJI.md
+
+---
+
+**Wersja:** 1.1  
+**Data:** 2026-04-05  
+**Status:** ✅ GOTOWE  
+**Powodzenia!** 🚀

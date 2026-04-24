@@ -1,0 +1,48 @@
+{
+  "timestamp": "2026-04-05T14:32:15.123456",
+  "datetime_pl": "2026-04-05 14:32:15",
+  "duration_sec": 360,
+  "sample_rate": 16000,
+  "top3": [
+    {
+      "rank": 1,
+      "category": "bomba_lotnicza",
+      "label": "Bomba lotnicza",
+      "type": "przerywany",
+      "score": 52.5,
+      "detections": 28
+    },
+    {
+      "rank": 2,
+      "category": "serie_bron_maszynowej",
+      "label": "Serie / bron maszynowa",
+      "type": "przerywany",
+      "score": 38.2,
+      "detections": 19
+    },
+    {
+      "rank": 3,
+      "category": "pozar_trzask",
+      "label": "Pozar / trzask",
+      "type": "ciagly",
+      "score": 24.7,
+      "detections": 12
+    }
+  ],
+  "all_scores": {
+    "woda_wyciek": 5.3,
+    "pozar_trzask": 24.7,
+    "wystrzal_krab": 0.0,
+    "bomba_lotnicza": 52.5,
+    "kolumna_pancerna": 8.1,
+    "serie_bron_maszynowej": 38.2
+  },
+  "all_detections": {
+    "woda_wyciek": 2,
+    "pozar_trzask": 12,
+    "wystrzal_krab": 0,
+    "bomba_lotnicza": 28,
+    "kolumna_pancerna": 5,
+    "serie_bron_maszynowej": 19
+  }
+}

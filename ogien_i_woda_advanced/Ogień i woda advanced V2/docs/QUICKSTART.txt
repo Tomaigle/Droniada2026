@@ -1,0 +1,198 @@
+﻿╔════════════════════════════════════════════════════════════════════╗
+║                   QUICK START - v1.1                               ║
+║         Sound Classifier GUI - Detekcja Dźwięków Bojowych           ║
+╚════════════════════════════════════════════════════════════════════╝
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚀 URUCHOMIENIE (3 KROKI)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Zainstaluj biblioteki:
+   ╭─────────────────────────────────────────────────────────────╮
+   │ pip install librosa sounddevice numpy scipy onnxruntime    │
+   ╰─────────────────────────────────────────────────────────────╯
+
+2. Pobierz model AI (yamnet_classifier.onnx)
+   → https://tfhub.dev/google/yamnet/1
+   → Umieść w folderze (obok skryptu)
+
+3. Uruchom program:
+   ╭─────────────────────────────────────────────────────────────╮
+   │ python polaczony_classifier_gui.py                          │
+   ╰─────────────────────────────────────────────────────────────╯
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 TRZY GŁÓWNE POPRAWKI v1.1
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ 1. LEPSZA DETEKCJA DŹWIĘKÓW
+   ✚ 5 reguł zamiast 2
+   ✚ Nowe parametry: ZCR, Spectral Centroid
+   ✚ Hybrid mode: AI + heurystyka razem
+
+✓ 2. WYŚWIETLANIE W GUI
+   ✚ 6 parametrów zamiast 2
+   ✚ Confidence w procentach (45% zamiast 0.45)
+   ✚ RMS w decybelach (dB zamiast wartości raw)
+   
+   Nowy log:
+   [14:32:15] ~ Woda/wyciek [conf=45%] RMS=-15.2dB Kurt=2.3 ZCR=0.045 SC=1200Hz
+
+✓ 3. RAPORTY JSON Z DATĄ I NUMERACJĄ
+   ✚ Format: report_20260405_143215_001.json
+   ✚ Automatyczna numeracja (001, 002, 003...)
+   ✚ Polski + ISO format daty
+   ✚ Wszystkie kategorie (nie tylko top 3)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎮 INTERFACE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   ┌────────────────────────────────────────────────────────────┐
+   │              DSP ADVANCED CLASSIFIER v1.1                 │
+   ├────────────────────────────────────────────────────────────┤
+   │                                                            │
+   │  Mikrofon:  [Select device ▼]  [Odśwież] [Test mikrofonu]│
+   │  VU Meter:  ████░░░░░░░░ -15dB                           │
+   │                                                            │
+   │  Czas:  [30s] [60s] [110s] [360s]  lub: [___] sekund    │
+   │                                                            │
+   ├────────────────────────────────────────────────────────────┤
+   │  Czas: 00:45 / 01:00          ● NASLUCH AKTYWNY         │
+   │  ▓░░░░░░░░░░░░░░░░░░░░░░░░░░░                            │
+   │                                                            │
+   │         [▶ START]        [■ STOP]                         │
+   │                                                            │
+   ├────────────────────────────────────────────────────────────┤
+   │                                                            │
+   │  LOG DETEKCJI            │  WYNIKI                        │
+   │  ─────────────────────   │  ────────────────────          │
+   │  [14:32:15] ~ Woda...   │  ~ Woda ███░░░░ 5 (12.3)     │
+   │  [14:32:16] # Pożar...  │  # Pożar ███░░░░ 8 (18.7)     │
+   │  [14:32:17] = Kolumna.. │  = Kolumna ██░░░░ 3 (8.2)     │
+   │  [14:32:18] ! Krab...   │  ! Krab  ░░░░░░░ 0 (0.0)      │
+   │  [14:32:19] * Bomba...  │  * Bomba ░░░░░░░ 0 (0.0)      │
+   │  [14:32:20] : Serie...  │  : Serie ░░░░░░░ 0 (0.0)      │
+   │                        │                                 │
+   └────────────────────────────────────────────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🧪 TESTOWANIE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Weryfiej instalację:
+   python TESTER_V1.1.py
+   
+   Powinno pokazać: ✓ ✓ ✓ ✓ ✓ ... (wszystkie zielone)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚙️ DOSTROJENIE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Jeśli nie detektuje:
+   MIN_CONFIDENCE = 0.20   (było 0.25)
+
+Jeśli zbyt wiele alarmów:
+   MIN_CONFIDENCE = 0.40   (było 0.25)
+
+Pełny poradnik: PORADNIK_OPTYMALIZACJI.md
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📂 WAŻNE PLIKI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+polaczony_classifier_gui.py ← GŁÓWNY PROGRAM
+README.md                      ← Pełna dokumentacja
+PODSUMOWANIE_ZMIAN.txt        ← Co się zmieniło
+PORADNIK_OPTYMALIZACJI.md     ← Dostrojenie
+CHANGELOG.md                  ← Historia wersji
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6️⃣ KATEGORIE DŹWIĘKÓW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+~ Woda/wyciek           (Ciągły)      - Szmer wody
+# Pożar/trzask          (Ciągły)      - Trzask drewna
+! Wystrzał KRAB         (Przerywany)  - Pojedynczy strzał
+* Bomba lotnicza        (Przerywany)  - Eksplozja
+= Kolumna pancerna      (Ciągły)      - Silnik czołgu
+: Serie/bron maszynowa  (Przerywany)  - Seria strzałów
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 NOWY FORMAT RAPORTU JSON
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+report_20260405_143215_001.json
+
+Zawartość:
+{
+  "timestamp": "2026-04-05T14:32:15.123456",    ← ISO format
+  "datetime_pl": "2026-04-05 14:32:15",         ← Polski format
+  "duration_sec": 360,
+  "sample_rate": 16000,
+  "top3": [...],                                ← Trzeci wyniki
+  "all_scores": {...},                          ← Wszystkie sumy
+  "all_detections": {...}                       ← Wszystkie liczniki
+}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📈 LOG Z NOWĄ INFORMACJĄ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[14:32:15] ~ Woda / wyciek        [conf=45%] RMS=-15.2dB Kurt=2.3 ZCR=0.045 SC=1200Hz
+           │ ikona            │      │          │        │      │        │         │
+           └─────────────────────────┬──────────┴──────────┴─────┴────────┴─────────┘
+                                     └──── 6 parametrów (było 2)
+
+conf:     Pewność w procentach
+RMS:      Energia sygnału w decybelach
+Kurt:     Kurtosis (miara "ostości")
+ZCR:      Zero Crossing Rate (szybkość zmian)
+SC:       Spectral Centroid (gdzie w spektrum w Hz)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🐛 TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+❌ ImportError: No module named 'librosa'
+✓ pip install librosa sounddevice numpy scipy onnxruntime
+
+❌ "Brak urządzeń audio"
+✓ Sprawdź audio w systemie / wybierz inne urządzenie
+
+❌ Nie ma detekcji
+✓ Zwiększ głośność / obniż MIN_CONFIDENCE na 0.20
+
+❌ "Model nie znaleziony"
+✓ Pobierz yamnet_classifier.onnx z tfhub.dev
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ CHECKLIST PRZED TESTAMI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+□ Biblioteki zainstalowane
+□ yamnet_classifier.onnx pobrane
+□ Program uruchomił się
+□ Testowy mikrofon pracuje (VU meter reaguje)
+□ START/STOP działają
+□ Detekcje pojawiają się w LOG
+□ Raporty JSON są zapisywane
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📞 LINKI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Model: https://tfhub.dev/google/yamnet/1
+LibROSA: https://librosa.org/
+ONNX: https://onnxruntime.ai/
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 READY? LET'S GO!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+python polaczony_classifier_gui.py
+
+Powodzenia! 🚀
+
+╚════════════════════════════════════════════════════════════════════╝
+v1.1 | 2026-04-05 | Production Ready ✅
