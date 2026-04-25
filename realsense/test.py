@@ -5,7 +5,7 @@ import time
 from ultralytics import YOLO  # type: ignore
 
 CONFIDENCE_THRESHOLD = 0.7
-MODEL_PATH = "/home/bartek/Studia/Orion/realsense/best.pt"  # swap to yolov8s/m/l/x for more accuracy
+MODEL_PATH = "yolov8n.pt"  # swap to yolov8s/m/l/x for more accuracy
 SHOW_DEPTH_MAP = True  # toggle depth visualization side by side
 SHOW_FPS = True
 

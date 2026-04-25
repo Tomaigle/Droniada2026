@@ -9,10 +9,9 @@ from ultralytics import YOLO
 import pyrealsense2 as rs
 
 # ── CONFIG ────────────────────────────────────────────────
-MODEL_PATH = "yolov8n.pt"  # auto-downloads if missing
+MODEL_PATH = "best.pt"  # auto-downloads if missing
 GRIP_DISTANCE = 1.00  # [m] grip when closer than this
 CENTER_THRESH = 0.16  # [m] acceptable XY error before descending
-BALL_CLASS_ID = 32  # coco: sports ball
 CONF_THRESHOLD = 0.05
 KP = 0.5  # proportional gain for speed commands
 MAX_SPEED = 0.5  # [m/s] max sent to drone
@@ -151,7 +150,7 @@ def main():
             frame = np.asanyarray(color_frame.get_data())
 
             # ── Detection ──────────────────────────────────
-            results = model(frame, verbose=False, classes=[BALL_CLASS_ID])[0]
+            results = model(frame, verbose=False)[0]
 
             best = None
             for box in results.boxes:
