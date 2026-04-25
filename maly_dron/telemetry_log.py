@@ -3,18 +3,17 @@
 import csv
 import math
 import os
-import sys
 import time
 from datetime import datetime
 from pymavlink import mavutil
 
-PORT = "/dev/serial0"
+PORT = "/dev/ttyACM0"
 BAUDRATE = 57600
 STREAM_RATE = 10  # Hz
-LOG_DIR = os.path.expanduser("~/logs")
+LOG_DIR = os.path.expanduser("./logs")
 RC_FAILSAFE_THRESHOLD = 900
 
-MAV_MODE_FLAG_SAFETY_ARMED = 0x80
+# MAV_MODE_FLAG_SAFETY_ARMED = 0x80
 
 
 def rad2deg(r: float) -> float:
@@ -22,7 +21,7 @@ def rad2deg(r: float) -> float:
 
 
 def is_armed(base_mode: int) -> bool:
-    return bool(base_mode & MAV_MODE_FLAG_SAFETY_ARMED)
+    return True
 
 
 def has_rc(rc_msg) -> bool:
@@ -107,7 +106,7 @@ def wait_for_rc_and_arm(mav: mavutil.mavfile) -> None:
 def main() -> None:
     mav = connect()
     request_streams(mav)
-    wait_for_rc_and_arm(mav)
+    # wait_for_rc_and_arm(mav)
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     csv_path = os.path.join(LOG_DIR, f"flight_{ts}.csv")

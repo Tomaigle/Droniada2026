@@ -1,3 +1,5 @@
 **/*.pt
+**/.venv
+**/__pycache__
 
 !**/best.pt
