@@ -1,12 +1,21 @@
 """
 main.py — Last Mile Logistics BASIC stage entry point.
 
-Usage:
-    python main.py            # full autonomous mission
-    python main.py --sim      # skip MAVLink/camera, run detector only (debug)
-    python main.py --no-hud   # headless (no cv2.imshow)
+Operator workflow (SSH from laptop):
+  1. Power on drone, props off or safely secured.
+  2. ssh pi@<ip>  →  python main.py
+  3. Script connects to FC and waits for heartbeat.
+  4. Script prints "Arm via RC transmitter..."
+  5. Operator arms drone on RC.
+  6. Script prints "Type START and press Enter to begin mission."
+  7. Operator types START → mission begins.
+  8. Ctrl+C at any time → safe abort (gripper open, hover, land).
 
-Ctrl+C or press Q in the HUD window to abort safely.
+Flags:
+  --sim          Skip MAVLink + gripper hardware (detection only)
+  --no-hud       No cv2.imshow (headless SSH session)
+  --mock-mav     Real camera, mock MAVLink (print commands only)
+  --mock-grip    Real MAVLink, mock gripper
 """
 
 import os
@@ -14,13 +23,15 @@ import sys
 import time
 import argparse
 import logging
+import threading
 
 os.environ.setdefault("DISPLAY", ":0")
 os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
 
 import cv2
 
-from mavlink_controller import MAVLinkController
+from mavlink_controller import MAVLinkController, MockMAVLinkController
+from gripper import Gripper, MockGripper
 from detector import RealSenseCamera, BallDetector, BarrelDetector
 from mission import MissionController
 from overlay import draw_frame
@@ -34,122 +45,170 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args():
     p = argparse.ArgumentParser(description="Last Mile Logistics — BASIC stage")
-    p.add_argument("--sim",    action="store_true", help="Skip MAVLink; detect-only mode")
-    p.add_argument("--no-hud", action="store_true", help="Disable live video window")
+    p.add_argument("--sim", action="store_true", help="No MAVLink, no gripper hardware")
+    p.add_argument(
+        "--no-hud", action="store_true", help="Disable video window (headless)"
+    )
+    p.add_argument(
+        "--mock-mav", action="store_true", help="Mock MAVLink — print cmds only"
+    )
+    p.add_argument(
+        "--mock-grip", action="store_true", help="Mock gripper — print cmds only"
+    )
     return p.parse_args()
+
+
+# ── Operator start gate ───────────────────────────────────────────────────────
+
+
+def wait_for_operator_start(event: threading.Event) -> None:
+    """Blocks in a thread until operator types START."""
+    while True:
+        try:
+            cmd = input().strip().upper()
+        except EOFError:
+            break
+        if cmd == "START":
+            log.info("Operator start command received.")
+            event.set()
+            break
+        else:
+            print("Type START to begin mission.")
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
 
 
 def main() -> None:
     args = parse_args()
 
-    # ── Hardware init ──────────────────────────────────────────────────────
+    # Hardware
     camera = RealSenseCamera()
     camera.start()
-    log.info("Camera ready")
+    log.info("RealSense ready")
 
-    ball_det   = BallDetector(camera)
+    ball_det = BallDetector(camera)
     barrel_det = BarrelDetector(camera)
 
-    mav = MAVLinkController()
-    if not args.sim:
+    if args.sim or args.mock_mav:
+        mav = MockMAVLinkController()
         mav.connect()
-        mav.gripper_open()          # ensure gripper starts open
-        log.info("MAVLink ready")
     else:
-        log.info("SIM mode — MAVLink disabled")
+        mav = MAVLinkController()
+        mav.connect()
 
-    mission = MissionController(mav, camera, ball_det, barrel_det)
-
-    if not args.sim:
-        input("Press ENTER to arm and start mission...")
-        mission.start()
+    if args.sim or args.mock_grip:
+        gripper = MockGripper()
     else:
-        log.info("SIM: detection-only loop running. Press Q to quit.")
+        gripper = Gripper()
+    gripper.connect()
 
-    # ── Main loop ──────────────────────────────────────────────────────────
+    # Operator start event
+    start_event = threading.Event()
+    if args.sim:
+        log.info("SIM mode — auto-starting mission")
+        start_event.set()
+    else:
+        log.info("=" * 55)
+        log.info("Arm drone via RC transmitter, then type START + Enter")
+        log.info("=" * 55)
+        t = threading.Thread(
+            target=wait_for_operator_start, args=(start_event,), daemon=True
+        )
+        t.start()
+
+    mission = MissionController(
+        mav=mav,
+        gripper=gripper,
+        camera=camera,
+        ball_det=ball_det,
+        barrel_det=barrel_det,
+        operator_start=start_event,
+    )
+
+    # ── Main loop ─────────────────────────────────────────────────────────────
     try:
         while True:
             frame, depth_frame = camera.get_frames()
             if frame is None:
                 continue
 
-            # Detection (always run for overlay, even in sim)
-            current_colour = mission.current_colour if not args.sim else None
-            ball_dets   = ball_det.detect(frame, depth_frame, target_colour=current_colour)
+            telemetry = mission.run_step(frame, depth_frame)
+
+            # Detections for overlay (always run)
+            colour = (
+                mission.ball_records[mission.current_ball_idx].colour
+                if mission.ball_records
+                and mission.current_ball_idx < len(mission.ball_records)
+                else None
+            )
+            ball_dets = ball_det.detect(frame, depth_frame, target_colour=colour)
             barrel_dets = barrel_det.detect(frame, depth_frame)
-            all_dets    = ball_dets + barrel_dets
+            all_dets = ball_dets + barrel_dets
 
-            # Mission step
-            telemetry = mission.run_step(frame, depth_frame) if not args.sim else {}
-
-            # HUD
             if not args.no_hud:
                 annotated = draw_frame(
                     frame,
-                    state_name=telemetry.get("state", "SIM"),
+                    state_name=telemetry.get("state", "—"),
                     telemetry=telemetry,
                     detections=all_dets,
                     holding=telemetry.get("holding", False),
-                    queue=telemetry.get("queue", list(config.PICKUP_ORDER)),
+                    queue=telemetry.get("queue", []),
                     vx=telemetry.get("vx", 0.0),
                     vy=telemetry.get("vy", 0.0),
                     vz=telemetry.get("vz", 0.0),
                 )
-                cv2.imshow("Last Mile — Ball Tracker", annotated)
+                cv2.imshow("Last Mile", annotated)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     log.info("Q pressed — aborting")
                     break
 
-            # Terminal log (throttled)
             _log_telemetry(telemetry, all_dets)
 
-            # Mission complete check
             from mission import State
+
             if mission.state in (State.COMPLETE, State.ABORT):
-                log.info("Mission ended in state %s. Exiting loop.", mission.state.name)
+                log.info("Mission ended: %s", mission.state.name)
                 time.sleep(3)
                 break
 
     except KeyboardInterrupt:
-        log.info("Keyboard interrupt")
+        log.info("Ctrl+C — emergency abort")
     finally:
-        log.info("Shutting down...")
-        if not args.sim:
-            mav.gripper_open()
-            mav.hover()
+        log.info("Shutdown: opening gripper, hover, disconnect")
+        gripper.open()
+        mav.hover()
+        time.sleep(0.5)
         camera.stop()
         cv2.destroyAllWindows()
+        mav.disconnect()
+        gripper.disconnect()
         log.info("Done.")
 
 
-# ── Terminal telemetry ─────────────────────────────────────────────────────────
+# ── Terminal log throttle ─────────────────────────────────────────────────────
+
 _last_log = 0.0
+
 
 def _log_telemetry(telemetry: dict, detections: list) -> None:
     global _last_log
     now = time.time()
-    if now - _last_log < 0.25:
+    if now - _last_log < 0.3:
         return
     _last_log = now
-
-    state = telemetry.get("state", "-")
-    queue = telemetry.get("queue", [])
-    hold  = telemetry.get("holding", False)
-    vx    = telemetry.get("vx", 0.0)
-    vy    = telemetry.get("vy", 0.0)
-    vz    = telemetry.get("vz", 0.0)
-
-    det_str = "  ".join(
-        f"{d.colour}@{d.depth:.2f}m" for d in detections[:3]
-    ) or "no detections"
-
+    det_str = "  ".join(f"{d.colour}@{d.depth:.2f}m" for d in detections[:4]) or "—"
     log.info(
-        "[%s] grip=%s queue=%s  vx=%+.2f vy=%+.2f vz=%+.2f  | %s",
-        state, "HOLD" if hold else "open",
-        "→".join(queue) if queue else "done",
-        vx, vy, vz, det_str,
+        "[%s] hold=%s queue=%s  vx=%+.2f vy=%+.2f vz=%+.2f | %s",
+        telemetry.get("state", "?"),
+        "Y" if telemetry.get("holding") else "N",
+        "→".join(telemetry.get("queue", [])) or "done",
+        telemetry.get("vx", 0.0),
+        telemetry.get("vy", 0.0),
+        telemetry.get("vz", 0.0),
+        det_str,
     )
 
 
