@@ -139,4 +139,8 @@ WAIT_ARM → WAIT_START → REVERSE_TO_BALLS → SCAN_BALLS
 - figure out online telemetry
 - start sequence position adjust
 - camera angle calibration
-- camera tilt compestation for both x and y
+- camera tilt compestation for both x and y if needed
+
+## in ArduPilot
+
+- gcs failsafe

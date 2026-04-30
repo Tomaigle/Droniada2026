@@ -9,7 +9,7 @@ from ultralytics import YOLO
 import pyrealsense2 as rs
 
 # ── CONFIG ────────────────────────────────────────────────
-MODEL_PATH = "best.pt"  # auto-downloads if missing
+MODEL_PATH = "new_best.pt"  # auto-downloads if missing
 GRIP_DISTANCE = 1.00  # [m] grip when closer than this
 CENTER_THRESH = 0.16  # [m] acceptable XY error before descending
 CONF_THRESHOLD = 0.05

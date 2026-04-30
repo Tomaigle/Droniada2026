@@ -27,7 +27,7 @@ import cv2
 import numpy as np
 import pyrealsense2 as rs
 from ultralytics import YOLO
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 import logging
 import math
