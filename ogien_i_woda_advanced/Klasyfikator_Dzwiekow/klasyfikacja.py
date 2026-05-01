@@ -46,7 +46,8 @@ ZONE_YELLOW   = -6.0
 ZONE_RED      = -3.0
 
 # Ile sekund audio zbieramy przed klasyfikacja
-# 2 sekundy = wystarczy dla MFCC, nie za dlugo
+# 2 sekundy = wystarczy dla MFCC, nie za dlugo ale zeby cos robilo
+#test xd
 KLASYFIKUJ_CO_SEK = 1.0
 
 # Sciezka do modelu — szuka w tym samym folderze co skrypt
