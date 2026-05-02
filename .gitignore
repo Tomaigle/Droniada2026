@@ -1,4 +1,5 @@
 **/*.pt
 **/.venv
 **/__pycache__
+**/probki
 
