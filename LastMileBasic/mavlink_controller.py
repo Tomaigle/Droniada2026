@@ -1,373 +1,311 @@
-import logging
-import math
-import threading
 import time
+import queue
+import threading
+import logging
+from typing import Optional
+from dataclasses import dataclass
 
-import config
 from pymavlink import mavutil
+import config
 
 log = logging.getLogger(__name__)
 
 
-class MavlinkController:
+@dataclass
+class _CmdVelocity:
+    vx: float
+    vy: float
+    vz: float
+
+
+@dataclass
+class _CmdMode:
+    mode: str
+
+
+@dataclass
+class _CmdTakeoff:
+    alt_m: float
+
+
+@dataclass
+class _CmdStop:
+    pass
+
+
+class MAVLinkController:
     def __init__(
         self, port: str = config.MAVLINK_PORT, baud: int = config.MAVLINK_BAUD
-    ) -> None:
+    ):
         self.port = port
         self.baud = baud
-        self.mav: mavutil.mavfile | None = None
+        self._mav: Optional[mavutil.mavfile] = None
+        self._cmd_q: queue.Queue = queue.Queue(maxsize=20)
         self._running = False
-        self._hb_thread: threading.Thread | None = None
-        self._last_armed = False
-        self._last_mode = "UNKNOWN"
-        self._last_altitude = 0.0
-        self._last_lat = 0
-        self._last_lon = 0
-        self._last_heading = 0.0
-        self._last_gps_fix = 0
-        self._home_xy = None
-        self._geofence_radial: float | None = None
-        self._geofence_square: tuple | None = None
+        self._io_thread: Optional[threading.Thread] = None
+        self._state_lock = threading.Lock()
+        self._state: dict = {
+            "armed": False,
+            "mode": "UNKNOWN",
+            "alt_m": 0.0,
+            "lat": 0.0,
+            "lon": 0.0,
+            "vx_ms": 0.0,
+            "vy_ms": 0.0,
+            "vz_ms": 0.0,
+            "geofence_breach": False,
+            "fc_connected": False,
+        }
 
-    def connect(self, timeout: float = config.MAVLINK_CONNECT_TIMEOUT) -> None:
-        log.info(f"Connecting to FC on {self.port} @ {self.baud}")
-        self.mav = mavutil.mavlink_connection(
+    def connect(self, timeout: float = 30.0) -> None:
+        log.info("Connecting to FC on %s @ %d baud …", self.port, self.baud)
+        self._mav = mavutil.mavlink_connection(
             self.port, baud=self.baud, source_system=255, source_component=0
         )
-        if not self.mav.wait_heartbeat(timeout=timeout):
-            raise ConnectionError(f"No heartbeat received after {timeout}s")
+        if not self._mav.wait_heartbeat(timeout=timeout):
+            raise ConnectionError(
+                "No heartbeat received — check wiring and SERIAL_PROTOCOL=2 on FC."
+            )
         log.info(
-            f"FC connected - system {self.mav.target_system}, component {self.mav.target_component}"
+            "FC connected — sysid=%d compid=%d",
+            self._mav.target_system,
+            self._mav.target_component,
         )
+        with self._state_lock:
+            self._state["fc_connected"] = True
         self._running = True
-        self._hb_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
-        self._hb_thread.start()
+        self._io_thread = threading.Thread(
+            target=self._io_loop, name="mav-io", daemon=True
+        )
+        self._io_thread.start()
 
     def disconnect(self) -> None:
+        self._cmd_q.put(_CmdStop())
         self._running = False
-        if self.mav:
-            self.mav.close()
+        if self._io_thread:
+            self._io_thread.join(timeout=3.0)
+        if self._mav:
+            self._mav.close()
+        log.info("MAVLink disconnected")
 
-    def _heartbeat_loop(self) -> None:
+    def send_velocity(self, vx: float, vy: float, vz: float) -> None:
+        self._enqueue(_CmdVelocity(vx, vy, vz))
+
+    def hover(self) -> None:
+        self._enqueue(_CmdVelocity(0.0, 0.0, 0.0))
+
+    def land(self) -> None:
+        self._enqueue(_CmdMode("LAND"))
+
+    def takeoff(self, alt_m: float = config.CRUISE_ALT_M) -> None:
+        self._enqueue(_CmdTakeoff(alt_m))
+
+    def set_mode(self, mode: str) -> None:
+        self._enqueue(_CmdMode(mode))
+
+    def _enqueue(self, cmd) -> None:
+        try:
+            self._cmd_q.put_nowait(cmd)
+        except queue.Full:
+            log.warning("Command queue full — dropping %s", type(cmd).__name__)
+
+    def get_state_snapshot(self) -> dict:
+        with self._state_lock:
+            return dict(self._state)
+
+    def is_geofence_breached(self) -> bool:
+        with self._state_lock:
+            return self._state["geofence_breach"]
+
+    def _io_loop(self) -> None:
+        last_hb_t = 0.0
+        last_fence_t = 0.0
+        HB_INTERVAL = 1.0
+        FENCE_HZ = 5.0
+
+        log.info("MAVLink I/O thread started")
+
         while self._running:
-            self.mav.mav.heartbeat_send(
-                mavutil.mavlink.MAV_TYPE_GCS,
-                mavutil.mavlink.MAV_AUTOPILOT_INVALID,
+            now = time.monotonic()
+
+            try:
+                while True:
+                    cmd = self._cmd_q.get_nowait()
+                    if isinstance(cmd, _CmdStop):
+                        log.info("MAVLink I/O thread stopping")
+                        return
+                    self._execute(cmd)
+            except queue.Empty:
+                pass
+
+            if now - last_hb_t >= HB_INTERVAL:
+                self._mav.mav.heartbeat_send(
+                    mavutil.mavlink.MAV_TYPE_GCS,
+                    mavutil.mavlink.MAV_AUTOPILOT_INVALID,
+                    0,
+                    0,
+                    0,
+                )
+                last_hb_t = now
+
+            msg = self._mav.recv_match(blocking=False)
+            if msg:
+                self._handle_msg(msg)
+
+            if now - last_fence_t >= 1.0 / FENCE_HZ:
+                self._check_geofence()
+                last_fence_t = now
+
+            time.sleep(0.005)
+
+        log.info("MAVLink I/O thread exited")
+
+    def _execute(self, cmd) -> None:
+        if isinstance(cmd, _CmdVelocity):
+            self._mav.mav.set_position_target_local_ned_send(
+                0,
+                self._mav.target_system,
+                self._mav.target_component,
+                mavutil.mavlink.MAV_FRAME_BODY_NED,
+                0b0000_1111_1100_0111,
+                0,
+                0,
+                0,
+                cmd.vx,
+                cmd.vy,
+                cmd.vz,
+                0,
+                0,
                 0,
                 0,
                 0,
             )
-            time.sleep(1)
 
-    def update_state(self) -> tuple[bool, str]:
-        for _ in range(10):
-            hb_msg = self.mav.recv_match(type="HEARTBEAT", blocking=False)
-            if not hb_msg:
-                break
-            self._last_mode = mavutil.mode_string_v10(hb_msg)
-            self._last_armed = bool(
-                hb_msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED
+        elif isinstance(cmd, _CmdMode):
+            mode_id = self._mav.mode_mapping().get(cmd.mode.upper())
+            if mode_id is None:
+                log.error("Mode %r not in FC mode map", cmd.mode)
+                return
+            self._mav.mav.set_mode_send(
+                self._mav.target_system,
+                mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+                mode_id,
             )
-        for _ in range(10):
-            pos_msg = self.mav.recv_match(type="GLOBAL_POSITION_INT", blocking=False)
-            if not pos_msg:
-                break
-            self._last_altitude = pos_msg.relative_alt / 1000.0
-            self._last_lat = pos_msg.lat
-            self._last_lon = pos_msg.lon
-            self._last_heading = pos_msg.hdg / 100.0
-        for _ in range(10):
-            gps_msg = self.mav.recv_match(type="GPS_RAW_INT", blocking=False)
-            if not gps_msg:
-                break
-            self._last_gps_fix = gps_msg.fix_type
-            if self._last_gps_fix < 5:
-                log.warning(f"GPS fix degraded: fix_type={self._last_gps_fix}")
-        return self._last_armed, self._last_mode
+            log.info("Mode → %s", cmd.mode)
 
-    def is_armed(self) -> bool:
-        return self._last_armed
+        elif isinstance(cmd, _CmdTakeoff):
+            self._mav.mav.command_long_send(
+                self._mav.target_system,
+                self._mav.target_component,
+                mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                cmd.alt_m,
+            )
+            log.info("Takeoff → %.1f m", cmd.alt_m)
 
-    def get_mode(self) -> str:
-        return self._last_mode
+    def _handle_msg(self, msg) -> None:
+        mtype = msg.get_type()
 
-    def get_altitude(self) -> float:
-        return self._last_altitude
+        if mtype == "HEARTBEAT":
+            armed = bool(msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
+            mode = mavutil.mode_string_v10(msg)
+            with self._state_lock:
+                self._state["armed"] = armed
+                self._state["mode"] = mode
+
+        elif mtype == "GLOBAL_POSITION_INT":
+            with self._state_lock:
+                self._state["alt_m"] = msg.relative_alt / 1000.0
+                self._state["lat"] = msg.lat / 1e7
+                self._state["lon"] = msg.lon / 1e7
+                self._state["vx_ms"] = msg.vx / 100.0
+                self._state["vy_ms"] = msg.vy / 100.0
+                self._state["vz_ms"] = msg.vz / 100.0
+
+    def _check_geofence(self) -> None:
+        with self._state_lock:
+            already = self._state["geofence_breach"]
+            lat = self._state["lat"]
+            lon = self._state["lon"]
+
+        if already or (lat == 0.0 and lon == 0.0):
+            return
+
+        inside = (
+            config.GEOFENCE_LAT_MIN <= lat <= config.GEOFENCE_LAT_MAX
+            and config.GEOFENCE_LON_MIN <= lon <= config.GEOFENCE_LON_MAX
+        )
+
+        if not inside:
+            log.critical("GEOFENCE BREACH — lat=%.7f lon=%.7f", lat, lon)
+            self._mav.mav.set_position_target_local_ned_send(
+                0,
+                self._mav.target_system,
+                self._mav.target_component,
+                mavutil.mavlink.MAV_FRAME_BODY_NED,
+                0b0000_1111_1100_0111,
+                0,
+                0,
+                0,
+                0.0,
+                0.0,
+                0.0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            )
+            with self._state_lock:
+                self._state["geofence_breach"] = True
+
+
+class MockMAVLinkController:
+    def __init__(self):
+        self._alt = config.CRUISE_ALT_M
+        self._breach = False
+
+    def connect(self, **_) -> None:
+        log.info("[MOCK MAV] Connected")
+
+    def disconnect(self) -> None:
+        log.info("[MOCK MAV] Disconnected")
+
+    def send_velocity(self, vx: float, vy: float, vz: float) -> None:
+        log.debug("[MOCK MAV] VEL vx=%+.2f vy=%+.2f vz=%+.2f", vx, vy, vz)
+
+    def hover(self) -> None:
+        log.debug("[MOCK MAV] HOVER")
+
+    def land(self) -> None:
+        log.info("[MOCK MAV] LAND")
+
+    def takeoff(self, alt_m: float = config.CRUISE_ALT_M) -> None:
+        log.info("[MOCK MAV] TAKEOFF → %.1f m", alt_m)
+        self._alt = alt_m
+
+    def set_mode(self, mode: str) -> None:
+        log.info("[MOCK MAV] MODE → %s", mode)
 
     def get_state_snapshot(self) -> dict:
         return {
-            "armed": self._last_armed,
-            "mode": self._last_mode,
-            "altitude_m": self._last_altitude,
-            "lat": self._last_lat / 1e7,
-            "lon": self._last_lon / 1e7,
-            "heading_deg": self._last_heading,
-            "gps_fix": self._last_gps_fix,
-            "timestamp": time.time(),
+            "armed": True,
+            "mode": "GUIDED",
+            "alt_m": self._alt,
+            "lat": config.GEOFENCE_LAT_MIN + 0.00005,
+            "lon": config.GEOFENCE_LON_MIN + 0.00005,
+            "vx_ms": 0.0,
+            "vy_ms": 0.0,
+            "vz_ms": 0.0,
+            "geofence_breach": self._breach,
+            "fc_connected": True,
         }
 
-    def set_geofence_radial(self, radius_m: float) -> None:
-        self._geofence_radial = radius_m
-        log.info(f"Radial geofence set: {radius_m}m from home")
-
-    def set_geofence_square(self, half_side_m: float) -> None:
-        if self._home_xy is None:
-            log.error("Cannot set square geofence: home not captured")
-            return
-        home_lat_deg = self._home_xy[0] / 1e7
-        home_lon_deg = self._home_xy[1] / 1e7
-        dlat_deg = half_side_m / 111_300
-        dlon_deg = half_side_m / (111_300 * math.cos(math.radians(home_lat_deg)))
-        self._geofence_square = (
-            int((home_lat_deg - dlat_deg) * 1e7),
-            int((home_lat_deg + dlat_deg) * 1e7),
-            int((home_lon_deg - dlon_deg) * 1e7),
-            int((home_lon_deg + dlon_deg) * 1e7),
-        )
-        log.info(f"Square geofence set: ±{half_side_m}m from home")
-
-    def get_geofence_violation(self) -> dict | None:
-        if self._last_lat == 0 and self._last_lon == 0:
-            return None
-        if self._geofence_radial is not None and self._home_xy is not None:
-            dlat = (self._last_lat - self._home_xy[0]) / 1e7
-            dlon = (self._last_lon - self._home_xy[1]) / 1e7
-            dist_m = math.sqrt(dlat**2 + dlon**2) * 111_300
-            if dist_m > self._geofence_radial:
-                return {
-                    "type": "radial",
-                    "dist_m": dist_m,
-                    "limit_m": self._geofence_radial,
-                    "excess_m": dist_m - self._geofence_radial,
-                }
-        if self._geofence_square is not None:
-            min_lat, max_lat, min_lon, max_lon = self._geofence_square
-            if not (
-                min_lat <= self._last_lat <= max_lat
-                and min_lon <= self._last_lon <= max_lon
-            ):
-                return {
-                    "type": "square",
-                    "lat": self._last_lat / 1e7,
-                    "lon": self._last_lon / 1e7,
-                    "bounds": {
-                        "min_lat": min_lat / 1e7,
-                        "max_lat": max_lat / 1e7,
-                        "min_lon": min_lon / 1e7,
-                        "max_lon": max_lon / 1e7,
-                    },
-                }
-        return None
-
-    def is_outside_geofence(self) -> bool:
-        return self.get_geofence_violation() is not None
-
-    def send_velocity(self, vx: float, vy: float, vz: float) -> None:
-        self.mav.mav.set_position_target_local_ned_send(
-            0,
-            self.mav.target_system,
-            self.mav.target_component,
-            mavutil.mavlink.MAV_FRAME_BODY_NED,
-            0b0000_1111_1100_0111,
-            0,
-            0,
-            0,
-            vx,
-            vy,
-            vz,
-            0,
-            0,
-            0,
-            0,
-            0,
-        )
-
-    def hover(
-        self,
-        altitude: float = config.MAVLINK_CRUISE_ALT,
-        climb_rate: float = 0.5,
-        timeout: float = config.MAVLINK_HOVER_TIMEOUT,
-    ) -> bool:
-        log.info(f"Hovering at {altitude:.1f}m (currently {self._last_altitude:.1f}m)")
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            self.update_state()
-            if abs(self._last_altitude - altitude) < 0.1:
-                log.info(f"Holding at {altitude:.1f}m")
-                self.send_velocity(0.0, 0.0, 0.0)
-                return True
-            vz = climb_rate if self._last_altitude > altitude else -climb_rate
-            self.send_velocity(0.0, 0.0, vz)
-            time.sleep(0.05)
-        log.error(f"Timed out reaching altitude {altitude:.1f}m")
-        return False
-
-    def go_to_coords(
-        self,
-        lat: float,
-        lon: float,
-        altitude: float = config.MAVLINK_CRUISE_ALT,
-    ) -> None:
-        log.info(f"Going to ({lat:.6f}, {lon:.6f}) @ {altitude:.1f}m")
-        self.mav.mav.set_position_target_global_int_send(
-            0,
-            self.mav.target_system,
-            self.mav.target_component,
-            mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
-            0b0000_1111_1111_1000,
-            int(lat * 1e7),
-            int(lon * 1e7),
-            altitude,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-        )
-
-    def wait_armed(self, timeout: float = config.MAVLINK_ARM_TIMEOUT) -> bool:
-        log.info("Waiting to be armed via RC")
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            self.update_state()
-            if self.is_armed():
-                log.info("Drone armed")
-                return True
-            time.sleep(0.2)
-        log.error("Arm timeout")
-        return False
-
-    def wait_for_guided(self, timeout: float = config.MAVLINK_GUIDED_TIMEOUT) -> bool:
-        log.info("Waiting for GUIDED mode")
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            self.update_state()
-            if "GUIDED" in self.get_mode().upper():
-                log.info("GUIDED mode confirmed")
-                return True
-            time.sleep(0.5)
-        log.error("Timeout waiting for GUIDED")
-        return False
-
-    def takeoff(self, altitude: float = config.MAVLINK_CRUISE_ALT) -> bool:
-        log.info(f"Takeoff to {altitude:.1f}m")
-        self.mav.mav.command_long_send(
-            self.mav.target_system,
-            self.mav.target_component,
-            mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            altitude,
-        )
-        ack = self.mav.recv_match(type="COMMAND_ACK", blocking=True, timeout=3)
-        if not ack or ack.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
-            log.error("Takeoff command not acknowledged")
-            return False
-        deadline = time.time() + config.MAVLINK_HOVER_TIMEOUT
-        while time.time() < deadline:
-            self.update_state()
-            if self._last_altitude >= altitude * 0.95:
-                log.info(f"Takeoff complete at {self._last_altitude:.1f}m")
-                return True
-            time.sleep(0.2)
-        log.error("Takeoff timed out")
-        return False
-
-    def capture_home(
-        self, timeout: float = config.MAVLINK_HOME_CAPTURE_TIMEOUT
-    ) -> bool:
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            msg = self.mav.messages.get("GLOBAL_POSITION_INT")
-            if msg and (msg.lat != 0 or msg.lon != 0):
-                self._home_xy = (msg.lat, msg.lon)
-                log.info(f"Home captured: ({msg.lat / 1e7:.6f}, {msg.lon / 1e7:.6f})")
-                return True
-            time.sleep(0.2)
-        log.warning("Home capture failed")
-        return False
-
-    def return_to_launch(self) -> bool:
-        mode_id = self.mav.mode_mapping().get("RTL")
-        if mode_id is None:
-            log.error("RTL not in mode map, attempting fallback return")
-            return self._fallback_return()
-        self.mav.mav.set_mode_send(
-            self.mav.target_system,
-            mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-            mode_id,
-        )
-        ack = self.mav.recv_match(type="COMMAND_ACK", blocking=True, timeout=3)
-        if ack and ack.result == mavutil.mavlink.MAV_RESULT_ACCEPTED:
-            log.info("RTL accepted by FC")
-            return True
-        log.error("RTL not acknowledged, attempting fallback return")
-        return self._fallback_return()
-
-    def _fallback_return(
-        self,
-        altitude: float = config.MAVLINK_CRUISE_ALT,
-        timeout: float = config.MAVLINK_LAND_TIMEOUT,
-    ) -> bool:
-        if self._home_xy is None:
-            log.error("No home captured, cannot fallback return")
-            return False
-        log.warning("Fallback return: navigating to home XY then landing")
-        home_lat, home_lon = self._home_xy
-        self.mav.mav.set_position_target_global_int_send(
-            0,
-            self.mav.target_system,
-            self.mav.target_component,
-            mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
-            0b0000_1111_1111_1000,
-            int(home_lat),
-            int(home_lon),
-            altitude,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-        )
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            self.update_state()
-            msg = self.mav.messages.get("GLOBAL_POSITION_INT")
-            if msg:
-                dlat = (msg.lat - home_lat) / 1e7
-                dlon = (msg.lon - home_lon) / 1e7
-                dist_m = math.sqrt(dlat**2 + dlon**2) * 111_300
-                if dist_m < 2.0:
-                    log.info("Reached home XY, initiating land")
-                    return self.land()
-            time.sleep(0.5)
-        log.error("Fallback return timed out")
-        return False
-
-    def land(self) -> bool:
-        mode_id = self.mav.mode_mapping().get("LAND")
-        if mode_id is None:
-            log.error("LAND mode not found in mode map")
-            return False
-        self.mav.mav.set_mode_send(
-            self.mav.target_system,
-            mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-            mode_id,
-        )
-        ack = self.mav.recv_match(type="COMMAND_ACK", blocking=True, timeout=3)
-        if ack and ack.result == mavutil.mavlink.MAV_RESULT_ACCEPTED:
-            log.info("LAND accepted by FC")
-            return True
-        log.error("LAND not acknowledged by FC")
-        return False
+    def is_geofence_breached(self) -> bool:
+        return self._breach
