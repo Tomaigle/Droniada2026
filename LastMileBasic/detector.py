@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class Detection:
-    color: str
+    colour: str
     cx: int
     cy: int
     depth: float
@@ -25,12 +25,17 @@ class Detection:
 def _pixel_err_to_world(
     px_err_x: float, px_err_y: float, depth_ray: float, fx: float, fy: float
 ) -> tuple[float, float]:
-    tilt_rad = math.radians(config.CAMERA_TILT_DEG)
-    cam_x = px_err_x * depth_ray / fx
-    cam_y = px_err_y * depth_ray / fy
-    world_x = cam_x - config.GRIPPER_OFFSET_X_M
-    world_y = cam_y * math.cos(tilt_rad) - config.GRIPPER_OFFSET_Y_M
-    return world_x, world_y
+    tilt = math.radians(config.CAMERA_TILT_DEG)
+    xc = px_err_x * depth_ray / fx
+    yc = px_err_y * depth_ray / fy
+    zc = depth_ray
+
+    body_forward = zc * math.cos(tilt) - yc * math.sin(tilt)
+    body_right = xc
+
+    err_forward = body_forward - config.GRIPPER_OFFSET_X_M
+    err_right = body_right - config.GRIPPER_OFFSET_Y_M
+    return err_forward, err_right
 
 
 class RealsenseCamera:

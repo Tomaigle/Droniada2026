@@ -73,6 +73,19 @@ class MAVLinkController:
         )
         with self._state_lock:
             self._state["fc_connected"] = True
+
+        for stream_id, rate_hz in (
+            (mavutil.mavlink.MAV_DATA_STREAM_POSITION, 10),
+            (mavutil.mavlink.MAV_DATA_STREAM_EXTRA1, 10),
+        ):
+            self._mav.mav.request_data_stream_send(
+                self._mav.target_system,
+                self._mav.target_component,
+                stream_id,
+                rate_hz,
+                1,
+            )
+        log.info("Telemetry streams requested at 10 Hz")
         self._running = True
         self._io_thread = threading.Thread(
             target=self._io_loop, name="mav-io", daemon=True
@@ -116,6 +129,10 @@ class MAVLinkController:
     def is_geofence_breached(self) -> bool:
         with self._state_lock:
             return self._state["geofence_breach"]
+
+    def is_armed(self) -> bool:
+        with self._state_lock:
+            return self._state["armed"]
 
     def _io_loop(self) -> None:
         last_hb_t = 0.0
@@ -309,3 +326,6 @@ class MockMAVLinkController:
 
     def is_geofence_breached(self) -> bool:
         return self._breach
+
+    def is_armed(self) -> bool:
+        return True
