@@ -55,7 +55,6 @@ def main() -> None:
     ball_det = BallDetector(obj_det)
     barrel_det = BarrelDetector(obj_det)
 
-    # ── Operator start gate ───────────────────────────────────────────────────
     operator_start = threading.Event()
     t = threading.Thread(
         target=_operator_input_thread, args=(operator_start,), daemon=True
@@ -63,7 +62,6 @@ def main() -> None:
     t.start()
     log.info("Arm drone, then type 'start' + Enter to begin mission.")
 
-    # ── Mission loop ──────────────────────────────────────────────────────────
     mission = MissionController(
         mav=mav,
         gripper=gripper,
@@ -76,7 +74,6 @@ def main() -> None:
     try:
         while True:
             if args.mock:
-                # In mock mode feed None frames — detectors won't be called for real
                 tel = mission.run_step(None, None)
             else:
                 frame, depth_frame = camera.get_frames()
