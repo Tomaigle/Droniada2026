@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RealSense · YOLO Stream</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+
+  <header>
+    <div class="header-left">
+      <span id="status-dot" class="dot dot--offline"></span>
+      <h1>REALSENSE <span class="accent">·</span> YOLO</h1>
+    </div>
+    <div class="header-right">
+      <span class="meta" id="hdr-model">—</span>
+      <span class="meta" id="hdr-res">—</span>
+      <span class="meta" id="hdr-depth">DEPTH —</span>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ── Video ───────────────────────────────────────────────────────── -->
+    <section class="video-section">
+      <div class="video-wrap">
+        <img id="stream" src="/video" alt="camera stream" />
+        <div class="fps-badge" id="fps-badge">— fps</div>
+      </div>
+    </section>
+
+    <!-- ── Side panel ──────────────────────────────────────────────────── -->
+    <aside class="side-panel">
+
+      <div class="card">
+        <h2 class="card-title">Stats</h2>
+        <div class="stat-row"><span>FPS</span>        <span id="s-fps"   class="val">—</span></div>
+        <div class="stat-row"><span>Detections</span> <span id="s-det"   class="val">—</span></div>
+        <div class="stat-row"><span>Model</span>      <span id="s-model" class="val">—</span></div>
+        <div class="stat-row"><span>Resolution</span> <span id="s-res"   class="val">—</span></div>
+        <div class="stat-row"><span>Depth</span>      <span id="s-depth" class="val">—</span></div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Detections</h2>
+        <div id="det-list" class="det-list">
+          <span class="none-msg">Waiting…</span>
+        </div>
+      </div>
+
+      <div class="card card--chart">
+        <h2 class="card-title">FPS History</h2>
+        <canvas id="fps-chart" width="260" height="80"></canvas>
+      </div>
+
+    </aside>
+
+  </main>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

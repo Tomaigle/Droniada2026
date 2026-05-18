@@ -9,7 +9,7 @@ from ultralytics import YOLO
 import pyrealsense2 as rs
 
 # ── CONFIG ────────────────────────────────────────────────
-MODEL_PATH = "new_best.pt"  # auto-downloads if missing
+MODEL_PATH = "color.pt"  # auto-downloads if missing
 GRIP_DISTANCE = 1.00  # [m] grip when closer than this
 CENTER_THRESH = 0.16  # [m] acceptable XY error before descending
 CONF_THRESHOLD = 0.05
@@ -69,20 +69,21 @@ def compute_mavlink_commands(err_x_m, err_y_m, depth):
     return vx, vy, vz, grip
 
 
-def print_mavlink(vx, vy, vz, grip, depth, err_x, err_y):
+def print_mavlink(vx, vy, vz, grip, depth, err_x, err_y, class_name, conf):
     ts = time.strftime("%H:%M:%S")
+    label = f"class={class_name}({conf:.2f})"
     if grip:
         print(
-            f"[{ts}]  *** GRIP ***  depth={depth:.2f}m  err=({err_x:+.3f}, {err_y:+.3f})m"
+            f"[{ts}]  *** GRIP ***  {label}  depth={depth:.2f}m  err=({err_x:+.3f}, {err_y:+.3f})m"
         )
     else:
         print(
             f"[{ts}]  MOVE  vx={vx:+.2f}  vy={vy:+.2f}  vz={vz:+.2f} m/s"
-            f"  |  depth={depth:.2f}m  err=({err_x:+.3f}, {err_y:+.3f})m"
+            f"  |  {label}  depth={depth:.2f}m  err=({err_x:+.3f}, {err_y:+.3f})m"
         )
 
 
-def draw_overlay(frame, cx, cy, fw, fh, depth, vx, vy, vz, grip):
+def draw_overlay(frame, cx, cy, fw, fh, depth, vx, vy, vz, grip, class_name, conf):
     fc = (fw // 2, fh // 2)
 
     col = (0, 255, 0) if grip else (0, 200, 255)
@@ -99,10 +100,10 @@ def draw_overlay(frame, cx, cy, fw, fh, depth, vx, vy, vz, grip):
     cv2.line(frame, (fc[0] - 20, fc[1]), (fc[0] + 20, fc[1]), (255, 255, 255), 1)
     cv2.line(frame, (fc[0], fc[1] - 20), (fc[0], fc[1] + 20), (255, 255, 255), 1)
 
-    # Depth label next to ball
+    # Class + depth label next to ball
     cv2.putText(
         frame,
-        f"{depth:.2f}m",
+        f"{class_name} {conf:.2f} {depth:.2f}m",
         (cx + 14, cy - 10),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.55,
@@ -113,18 +114,34 @@ def draw_overlay(frame, cx, cy, fw, fh, depth, vx, vy, vz, grip):
 
     # MAVLink command top-left
     if grip:
-        txt = "MAVLink: GRIP"
+        txt = f"MAVLink: GRIP [{class_name} {conf:.2f}]"
         c = (0, 255, 0)
     else:
-        txt = f"MAVLink: vx={vx:+.2f} vy={vy:+.2f} vz={vz:+.2f} m/s"
+        txt = f"MAVLink: vx={vx:+.2f} vy={vy:+.2f} vz={vz:+.2f} m/s [{class_name} {conf:.2f}]"
         c = (0, 200, 255)
 
     cv2.putText(frame, txt, (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.62, c, 2, cv2.LINE_AA)
 
 
+def draw_secondary(frame, x1, y1, x2, y2, class_name, conf):
+    """Draw non-target detections in grey."""
+    cv2.rectangle(frame, (x1, y1), (x2, y2), (160, 160, 160), 1)
+    cv2.putText(
+        frame,
+        f"{class_name} {conf:.2f}",
+        (x1, y1 - 6),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.45,
+        (160, 160, 160),
+        1,
+        cv2.LINE_AA,
+    )
+
+
 def main():
     print("Loading YOLOv8...")
     model = YOLO(MODEL_PATH)
+    class_names = model.names  # {id: name}
 
     print("Starting RealSense...")
     pipeline, align, fx, fy = setup_realsense()
@@ -134,7 +151,7 @@ def main():
 
     print("\n=== Live Feed Started — press Q to quit ===\n")
     print(f"{'TIME':10}  COMMAND")
-    print("-" * 65)
+    print("-" * 75)
 
     last_print = 0.0
 
@@ -152,21 +169,30 @@ def main():
             # ── Detection ──────────────────────────────────
             results = model(frame, verbose=False)[0]
 
-            best = None
+            detections = []
             for box in results.boxes:
                 conf = float(box.conf[0])
                 if conf < CONF_THRESHOLD:
                     continue
+                cls_id = int(box.cls[0])
+                cls_name = class_names.get(cls_id, str(cls_id))
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 cx = (x1 + x2) // 2
                 cy = (y1 + y2) // 2
                 depth = get_depth(depth_frame, cx, cy, fw, fh)
-                if best is None or depth < best[2]:
-                    best = (cx, cy, depth, x1, y1, x2, y2)
+                detections.append((cx, cy, depth, x1, y1, x2, y2, cls_name, conf))
 
-            # ── Commands + draw ────────────────────────────
-            if best:
-                cx, cy, depth, x1, y1, x2, y2 = best
+            # Sort by depth — closest = target
+            detections.sort(key=lambda d: d[2])
+
+            # ── Draw secondaries first (behind target) ──────
+            for det in detections[1:]:
+                _, _, _, x1, y1, x2, y2, cls_name, conf = det
+                draw_secondary(frame, x1, y1, x2, y2, cls_name, conf)
+
+            # ── Commands + draw target ─────────────────────
+            if detections:
+                cx, cy, depth, x1, y1, x2, y2, cls_name, conf = detections[0]
 
                 err_x_m = (cx - fc_x) * depth / fx
                 err_y_m = (cy - fc_y) * depth / fy
@@ -175,11 +201,15 @@ def main():
 
                 now = time.time()
                 if now - last_print > 0.1:
-                    print_mavlink(vx, vy, vz, grip, depth, err_x_m, err_y_m)
+                    print_mavlink(
+                        vx, vy, vz, grip, depth, err_x_m, err_y_m, cls_name, conf
+                    )
                     last_print = now
 
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 200, 255), 1)
-                draw_overlay(frame, cx, cy, fw, fh, depth, vx, vy, vz, grip)
+                draw_overlay(
+                    frame, cx, cy, fw, fh, depth, vx, vy, vz, grip, cls_name, conf
+                )
 
             else:
                 now = time.time()
