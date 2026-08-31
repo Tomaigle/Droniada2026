@@ -173,15 +173,23 @@ def detect_panels(frame: np.ndarray) -> list[Panel]:
 
 
 def _sort_corners(pts: np.ndarray) -> np.ndarray:
-    """Sortuje 4 narożniki: lewy-dolny, prawy-dolny, prawy-górny, lewy-górny."""
-    # Suma x+y jest najmniejsza dla lewego-górnego, największa dla prawego-dolnego
+    """Sortuje 4 narożniki w kolejności: lewy-dolny, prawy-dolny, prawy-górny, lewy-górny.
+
+    Współrzędne w pikselach obrazu (Y rośnie w DÓŁ). Dla sumy s=x+y i różnicy d=y-x:
+      - lewy-górny  (małe x, małe y)  → min s
+      - prawy-dolny (duże x, duże y)  → max s
+      - prawy-górny (duże x, małe y)  → min d
+      - lewy-dolny  (małe x, duże y)  → max d
+    Ta kolejność musi pasować do dst_pts=[[0,1],[1,1],[1,0],[0,0]] w detect_panels,
+    czyli (lewy-dolny→(0,1)=siatka(1,1)), aby X,Y siatki nie były zamienione/odbite.
+    """
     s = pts.sum(axis=1)
-    d = np.diff(pts, axis=1).ravel()
+    d = np.diff(pts, axis=1).ravel()   # = y - x
     return np.array([
-        pts[np.argmax(s)],   # prawy-dolny (duże x, duże y)  → tu: lewy-dolny (obraz Y rośnie w dół)
-        pts[np.argmin(d)],
-        pts[np.argmin(s)],
-        pts[np.argmax(d)],
+        pts[np.argmax(d)],   # lewy-dolny
+        pts[np.argmax(s)],   # prawy-dolny
+        pts[np.argmin(d)],   # prawy-górny
+        pts[np.argmin(s)],   # lewy-górny
     ], dtype=np.float32)
 
 

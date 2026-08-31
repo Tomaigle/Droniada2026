@@ -56,7 +56,7 @@ applyTo: "**"
 ### Image Classification & Anomaly Detection (`ogien_i_woda_basic/`, `ogien_i_woda_advanced/`)
 - **PyTorch/YOLOv8**: https://docs.ultralytics.com/
 - **TensorFlow/Keras**: https://www.tensorflow.org/
-- **Image Generation & Augmentation**: `ogien_i_woda_basic/v1/images/generate_panel_images.py`
+- **Synthetic Panel Generation**: `ogien_i_woda_basic/v1/generator/` module (CLI via `python -m generator.cli`)
 - **Model Training**: Reference existing scripts in `ogien_i_woda_advanced/`
 
 ---
