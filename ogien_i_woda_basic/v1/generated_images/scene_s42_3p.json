@@ -1,0 +1,177 @@
+{
+  "image": "scene_s42_3p.png",
+  "image_size": [
+    1920,
+    1080
+  ],
+  "camera": {
+    "distance_mm": 4000.0,
+    "yaw_deg": 0.0,
+    "pitch_deg": 25.0
+  },
+  "seed": 42,
+  "panels": [
+    {
+      "panel_id": 1,
+      "orientation_deg": 90,
+      "quad_px": [
+        [
+          279.0,
+          438.0
+        ],
+        [
+          279.0,
+          858.0
+        ],
+        [
+          471.5,
+          858.0
+        ],
+        [
+          471.5,
+          438.0
+        ]
+      ],
+      "cards": [
+        {
+          "x": 1,
+          "y": 5,
+          "color": "pomarańczowa",
+          "cell_center_px": [
+            365.625,
+            459.0
+          ]
+        },
+        {
+          "x": 10,
+          "y": 6,
+          "color": "fioletowa",
+          "cell_center_px": [
+            384.875,
+            837.0
+          ]
+        },
+        {
+          "x": 4,
+          "y": 7,
+          "color": "niebieska",
+          "cell_center_px": [
+            404.125,
+            585.0
+          ]
+        }
+      ]
+    },
+    {
+      "panel_id": 2,
+      "orientation_deg": 0,
+      "quad_px": [
+        [
+          750.0,
+          753.0
+        ],
+        [
+          1170.0,
+          753.0
+        ],
+        [
+          1170.0,
+          560.5
+        ],
+        [
+          750.0,
+          560.5
+        ]
+      ],
+      "cards": [
+        {
+          "x": 2,
+          "y": 5,
+          "color": "niebieska",
+          "cell_center_px": [
+            813.0,
+            666.375
+          ]
+        },
+        {
+          "x": 9,
+          "y": 8,
+          "color": "czerwona",
+          "cell_center_px": [
+            1107.0,
+            608.625
+          ]
+        },
+        {
+          "x": 10,
+          "y": 6,
+          "color": "zielona",
+          "cell_center_px": [
+            1149.0,
+            647.125
+          ]
+        }
+      ]
+    },
+    {
+      "panel_id": 3,
+      "orientation_deg": 0,
+      "quad_px": [
+        [
+          1326.0,
+          753.0
+        ],
+        [
+          1746.0,
+          753.0
+        ],
+        [
+          1746.0,
+          560.5
+        ],
+        [
+          1326.0,
+          560.5
+        ]
+      ],
+      "cards": [
+        {
+          "x": 1,
+          "y": 5,
+          "color": "niebieska",
+          "cell_center_px": [
+            1347.0,
+            666.375
+          ]
+        },
+        {
+          "x": 2,
+          "y": 3,
+          "color": "fioletowa",
+          "cell_center_px": [
+            1389.0,
+            704.875
+          ]
+        },
+        {
+          "x": 3,
+          "y": 9,
+          "color": "czerwona",
+          "cell_center_px": [
+            1431.0,
+            589.375
+          ]
+        },
+        {
+          "x": 4,
+          "y": 1,
+          "color": "żółta",
+          "cell_center_px": [
+            1473.0,
+            743.375
+          ]
+        }
+      ]
+    }
+  ]
+}

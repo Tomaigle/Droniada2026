@@ -24,8 +24,9 @@ def main() -> None:
     parser.add_argument(
         "--out",
         type=str,
-        required=True,
-        help="Output path stem (no extension); .png and .json appended.",
+        default="generated_images/scene",
+        help="Output path stem (no extension); .png and .json appended. "
+        "Default: generated_images/scene",
     )
     parser.add_argument(
         "--distance",

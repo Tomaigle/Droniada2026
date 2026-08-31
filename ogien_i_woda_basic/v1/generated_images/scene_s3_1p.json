@@ -1,0 +1,66 @@
+{
+  "image": "scene_s3_1p.png",
+  "image_size": [
+    1920,
+    1080
+  ],
+  "camera": {
+    "distance_mm": 4000.0,
+    "yaw_deg": 0.0,
+    "pitch_deg": 25.0
+  },
+  "seed": 3,
+  "panels": [
+    {
+      "panel_id": 1,
+      "orientation_deg": 90,
+      "quad_px": [
+        [
+          855.0,
+          438.0
+        ],
+        [
+          855.0,
+          858.0
+        ],
+        [
+          1047.5,
+          858.0
+        ],
+        [
+          1047.5,
+          438.0
+        ]
+      ],
+      "cards": [
+        {
+          "x": 8,
+          "y": 7,
+          "color": "żółta",
+          "cell_center_px": [
+            980.125,
+            753.0
+          ]
+        },
+        {
+          "x": 8,
+          "y": 1,
+          "color": "niebieska",
+          "cell_center_px": [
+            864.625,
+            753.0
+          ]
+        },
+        {
+          "x": 2,
+          "y": 8,
+          "color": "zielona",
+          "cell_center_px": [
+            999.375,
+            501.0
+          ]
+        }
+      ]
+    }
+  ]
+}

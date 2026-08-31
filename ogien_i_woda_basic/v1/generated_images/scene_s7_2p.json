@@ -1,0 +1,126 @@
+{
+  "image": "scene_s7_2p.png",
+  "image_size": [
+    1920,
+    1080
+  ],
+  "camera": {
+    "distance_mm": 4000.0,
+    "yaw_deg": 0.0,
+    "pitch_deg": 25.0
+  },
+  "seed": 7,
+  "panels": [
+    {
+      "panel_id": 1,
+      "orientation_deg": 0,
+      "quad_px": [
+        [
+          174.0,
+          753.0
+        ],
+        [
+          594.0,
+          753.0
+        ],
+        [
+          594.0,
+          560.5
+        ],
+        [
+          174.0,
+          560.5
+        ]
+      ],
+      "cards": [
+        {
+          "x": 6,
+          "y": 2,
+          "color": "niebieska",
+          "cell_center_px": [
+            405.0,
+            724.125
+          ]
+        },
+        {
+          "x": 9,
+          "y": 5,
+          "color": "czerwona",
+          "cell_center_px": [
+            531.0,
+            666.375
+          ]
+        },
+        {
+          "x": 1,
+          "y": 8,
+          "color": "żółta",
+          "cell_center_px": [
+            195.0,
+            608.625
+          ]
+        },
+        {
+          "x": 2,
+          "y": 1,
+          "color": "zielona",
+          "cell_center_px": [
+            237.0,
+            743.375
+          ]
+        }
+      ]
+    },
+    {
+      "panel_id": 2,
+      "orientation_deg": 0,
+      "quad_px": [
+        [
+          750.0,
+          753.0
+        ],
+        [
+          1170.0,
+          753.0
+        ],
+        [
+          1170.0,
+          560.5
+        ],
+        [
+          750.0,
+          560.5
+        ]
+      ],
+      "cards": [
+        {
+          "x": 7,
+          "y": 6,
+          "color": "czerwona",
+          "cell_center_px": [
+            1023.0,
+            647.125
+          ]
+        },
+        {
+          "x": 3,
+          "y": 9,
+          "color": "zielona",
+          "cell_center_px": [
+            855.0,
+            589.375
+          ]
+        },
+        {
+          "x": 1,
+          "y": 6,
+          "color": "niebieska",
+          "cell_center_px": [
+            771.0,
+            647.125
+          ]
+        }
+      ]
+    }
+  ]
+}
