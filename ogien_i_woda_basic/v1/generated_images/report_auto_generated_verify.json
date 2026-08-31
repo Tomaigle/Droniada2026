@@ -1,0 +1,61 @@
+{
+  "generated_image": "generated_images\\auto_generated_verify.png",
+  "overlay_image": "generated_images\\overlay_auto_generated_verify.png",
+  "parameters": {
+    "width": 1920,
+    "height": 1080,
+    "distance": 4000.0,
+    "drone_yaw": 15.0,
+    "drone_pitch": 30.0,
+    "panel_rotation": 5.0,
+    "panel_tilt": 10.0,
+    "panel_count": 1,
+    "min_anomalies_per_panel": 3,
+    "max_anomalies_per_panel": 4,
+    "seed": 123,
+    "show_grid": true,
+    "anomaly_specs": []
+  },
+  "detection": {
+    "panels_detected": 1,
+    "total_anomalies": 3,
+    "panels": [
+      {
+        "panel_id": 1,
+        "anomalies_count": 3,
+        "anomalies": [
+          {
+            "color": "czerwona",
+            "grid_x": 4,
+            "grid_y": 9,
+            "confidence": 0.20226018824535213,
+            "pixel_center": [
+              351,
+              699
+            ]
+          },
+          {
+            "color": "żółta",
+            "grid_x": 6,
+            "grid_y": 10,
+            "confidence": 0.20264654963646073,
+            "pixel_center": [
+              83,
+              499
+            ]
+          },
+          {
+            "color": "zielona",
+            "grid_x": 4,
+            "grid_y": 8,
+            "confidence": 0.20264654963646073,
+            "pixel_center": [
+              459,
+              664
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

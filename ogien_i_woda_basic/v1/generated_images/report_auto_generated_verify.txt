@@ -1,0 +1,25 @@
+Generated image: generated_images\auto_generated_verify.png
+Overlay image: generated_images\overlay_auto_generated_verify.png
+
+Parameters:
+  width: 1920
+  height: 1080
+  distance: 4000.0
+  drone_yaw: 15.0
+  drone_pitch: 30.0
+  panel_rotation: 5.0
+  panel_tilt: 10.0
+  panel_count: 1
+  min_anomalies_per_panel: 3
+  max_anomalies_per_panel: 4
+  seed: 123
+  show_grid: True
+  anomaly_specs: []
+
+Detection summary:
+  panels_detected: 1
+  total_anomalies: 3
+  Panel 1: 3 anomalies
+    - czerwona at (4,9) confidence=0.20226018824535213
+    - żółta at (6,10) confidence=0.20264654963646073
+    - zielona at (4,8) confidence=0.20264654963646073
