@@ -63,8 +63,9 @@ COLOR_RANGES = {
     "fioletowa":   [(130, 60,  60), (160, 255, 255)],
 }
 
-# Minimalna powierzchnia konturu kartki (piksele²) — odfiltruje szumy
-MIN_CARD_AREA = 300
+# Minimalna powierzchnia konturu kartki (piksele²) — odfiltruje szumy.
+# Kartki na obróconych / dalekich panelach po rzutowaniu bywają małe (~150-300 px²).
+MIN_CARD_AREA = 140
 
 # Minimalna powierzchnia banera (piksele²)
 MIN_BANNER_AREA = 5000
@@ -148,9 +149,12 @@ def detect_panels(frame: np.ndarray) -> list[Panel]:
             angle += 90
 
         # Macierz transformacji: piksel → układ lokalny banera (0..1 × 0..1)
-        src_pts = cv2.boxPoints(rect).astype(np.float32)
-        # Sortuj narożniki: lewy-dolny, prawy-dolny, prawy-górny, lewy-górny
-        src_pts = _sort_corners(src_pts)
+        box = cv2.boxPoints(rect).astype(np.float32)
+        # Najpierw spróbuj ułożyć narożniki wg białego znacznika (1,1) + długości boków —
+        # działa dla DOWOLNEGO obrotu (0°/45°/90°). Fallback: heurystyka sumy/różnicy.
+        src_pts = _order_corners_from_marker(frame, box)
+        if src_pts is None:
+            src_pts = _rotate_corners_for_white_marker(frame, _sort_corners(box))
         dst_pts = np.array([[0, 1], [1, 1], [1, 0], [0, 0]], dtype=np.float32)
         M = cv2.getPerspectiveTransform(src_pts, dst_pts)
 
@@ -180,8 +184,10 @@ def _sort_corners(pts: np.ndarray) -> np.ndarray:
       - prawy-dolny (duże x, duże y)  → max s
       - prawy-górny (duże x, małe y)  → min d
       - lewy-dolny  (małe x, duże y)  → max d
-    Ta kolejność musi pasować do dst_pts=[[0,1],[1,1],[1,0],[0,0]] w detect_panels,
-    czyli (lewy-dolny→(0,1)=siatka(1,1)), aby X,Y siatki nie były zamienione/odbite.
+    Używane TYLKO jako fallback, gdy biały znacznik (1,1) jest niepewny
+    (_order_corners_from_marker zwróciło None). Dla paneli ~45° ta heurystyka bywa
+    zdegenerowana; wtedy orientacja może być błędna — normalnie ścieżka ze znacznikiem
+    to pokrywa. Kolejność pasuje do dst_pts=[[0,1],[1,1],[1,0],[0,0]] w detect_panels.
     """
     s = pts.sum(axis=1)
     d = np.diff(pts, axis=1).ravel()   # = y - x
@@ -191,6 +197,73 @@ def _sort_corners(pts: np.ndarray) -> np.ndarray:
         pts[np.argmin(d)],   # prawy-górny
         pts[np.argmin(s)],   # lewy-górny
     ], dtype=np.float32)
+
+
+def _corner_whiteness(frame: np.ndarray, corner_pt: np.ndarray,
+                      centroid: np.ndarray) -> float:
+    """Fraction of a patch INSIDE the panel at this corner that is white-ish.
+
+    The white (1,1) marker fills the corner cell. Sampling exactly at the corner
+    vertex catches the black border / the grey background, so step ~18% of the way
+    from the corner toward the panel centroid (roughly the centre of the corner cell)
+    and sample there.
+    """
+    try:
+        h, w = frame.shape[:2]
+        sample = corner_pt + 0.18 * (centroid - corner_pt)
+        sx, sy = int(round(sample[0])), int(round(sample[1]))
+        r = 6
+        x0, x1 = max(0, sx - r), min(w, sx + r)
+        y0, y1 = max(0, sy - r), min(h, sy + r)
+        patch = frame[y0:y1, x0:x1]
+        if patch.size == 0:
+            return 0.0
+        hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
+        white = (hsv[:, :, 2] > 180) & (hsv[:, :, 1] < 60)
+        return float(np.mean(white))
+    except Exception:
+        return 0.0
+
+
+def _rotate_corners_for_white_marker(frame: np.ndarray, src_pts: np.ndarray) -> np.ndarray:
+    """Cyclically rotate the (BL,BR,TR,TL)-ordered corner list so the white (1,1)
+    marker corner sits at index 0 (which dst_pts maps to grid (1,1)).
+
+    Falls back to the geometric ordering when no corner is clearly whiter than the
+    others (real photo, marker occluded, etc.)."""
+    centroid = src_pts.mean(axis=0)
+    scores = [_corner_whiteness(frame, c, centroid) for c in src_pts]
+    best = int(np.argmax(scores))
+    # require a clear signal AND that it beats the runner-up
+    ranked = sorted(scores, reverse=True)
+    if ranked[0] < 0.3 or ranked[0] < ranked[1] + 0.15:
+        return src_pts
+    if best == 0:
+        return src_pts
+    return np.array([src_pts[(best + i) % 4] for i in range(4)], dtype=np.float32)
+
+
+def _order_corners_from_marker(frame: np.ndarray, box: np.ndarray):
+    """Ułóż 4 narożniki minAreaRect jako (BL, BR, TR, TL) używając białego znacznika (1,1)
+    i długości boków. Odporne na obrót (0°/45°/90°). Zwraca None, gdy znacznik niepewny.
+
+    BL  = najbielszy narożnik (siatka (1,1))
+    TR  = narożnik po przekątnej (najdalszy od BL)
+    BR  = z dwóch sąsiednich ten wzdłuż DŁUŻSZEGO boku (oś X, 2 m)
+    TL  = z dwóch sąsiednich ten wzdłuż KRÓTSZEGO boku (oś Y, 1 m)
+    """
+    c = box.mean(axis=0)
+    scores = [_corner_whiteness(frame, p, c) for p in box]
+    ranked = sorted(scores, reverse=True)
+    if ranked[0] < 0.3 or ranked[0] < ranked[1] + 0.15:
+        return None
+    bl = int(np.argmax(scores))
+    others = [i for i in range(4) if i != bl]
+    dist = {i: float(np.linalg.norm(box[i] - box[bl])) for i in others}
+    tr = max(others, key=lambda i: dist[i])
+    adj = sorted((i for i in others if i != tr), key=lambda i: dist[i], reverse=True)
+    br, tl = adj[0], adj[1]
+    return np.array([box[bl], box[br], box[tr], box[tl]], dtype=np.float32)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -237,16 +310,20 @@ def detect_anomalies_on_panel(frame: np.ndarray,
     anomalies = []
     seen_cells = {}  # (gx, gy) → najlepsza anomalia (unikalne kolory w komórce)
 
+    # Maska banera: wypełniony prostokąt minAreaRect (nie surowy kontur, który po
+    # morfologii i przez biały znacznik (1,1) bywa „zjedzony” przy krawędziach i gubi
+    # kartki w skrajnych kolumnach/wierszach). Lekko dylatowana dla zapasu.
+    panel_mask = np.zeros((h_img, w_img), dtype=np.uint8)
+    box = cv2.boxPoints(panel.rect).astype(np.int32)
+    cv2.fillConvexPoly(panel_mask, box, 255)
+    panel_mask = cv2.dilate(panel_mask, cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9)))
+
     for color_name in COLOR_RANGES:
         color_mask = build_color_mask(hsv, color_name)
-
-        # Ogranicz do obszaru banera
-        panel_mask = np.zeros((h_img, w_img), dtype=np.uint8)
-        cv2.drawContours(panel_mask, [panel.contour], -1, 255, -1)
         color_mask = cv2.bitwise_and(color_mask, panel_mask)
 
-        # Morfologia — usuń szumy
-        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        # Morfologia — usuń szumy (mały kernel, by nie skasować drobnych kartek)
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
         color_mask = cv2.morphologyEx(color_mask, cv2.MORPH_OPEN, k)
         color_mask = cv2.morphologyEx(color_mask, cv2.MORPH_CLOSE, k)
 
@@ -269,8 +346,11 @@ def detect_anomalies_on_panel(frame: np.ndarray,
             pt_norm = cv2.perspectiveTransform(pt, panel.transform)[0][0]
             px_norm, py_norm = float(pt_norm[0]), float(pt_norm[1])
 
-            if not (0 <= px_norm <= 1 and 0 <= py_norm <= 1):
+            # mały margines: środek skrajnej komórki potrafi wypaść tuż za [0,1]
+            if not (-0.04 <= px_norm <= 1.04 and -0.04 <= py_norm <= 1.04):
                 continue
+            px_norm = min(1.0, max(0.0, px_norm))
+            py_norm = min(1.0, max(0.0, py_norm))
 
             grid_x, grid_y = pixel_to_grid(px_norm, py_norm)
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
-from generator.regulation import COLORS
+from generator.regulation import COLORS, CORNER_MARKER_CELL
 
 
 @dataclass(frozen=True)
@@ -21,7 +21,8 @@ class PanelSpec:
 
 
 _COLOR_NAMES = [name for name, _ in COLORS]
-_GRID_CELLS = [(x, y) for x in range(1, 11) for y in range(1, 11)]
+# Exclude corner marker cell (1,1) so no card is sampled there
+_GRID_CELLS = [(x, y) for x in range(1, 11) for y in range(1, 11) if (x, y) != CORNER_MARKER_CELL]
 
 
 def _panel_card_counts(panel_count: int, rng: random.Random) -> list[int]:

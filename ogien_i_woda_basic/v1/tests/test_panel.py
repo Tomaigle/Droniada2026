@@ -34,3 +34,19 @@ def test_render_panel_cards_do_not_bleed_and_empty_stays_black():
 
     # cell (5,5) has no card -> still black
     assert img[275, 450].tolist() == [0, 0, 0]
+
+
+def test_corner_marker_default_true():
+    """Cell (1,1) is white when corner_marker=True (default)."""
+    img = render_panel([], size_px=(1000, 500), corner_marker=True)
+    # Center of cell (1,1): row ~490, col ~50
+    b, g, r = img[490, 50]
+    assert b == 255 and g == 255 and r == 255, f"Expected white (255,255,255), got ({b},{g},{r})"
+
+
+def test_corner_marker_false():
+    """Cell (1,1) is black when corner_marker=False."""
+    img = render_panel([], size_px=(1000, 500), corner_marker=False)
+    # Center of cell (1,1): row ~490, col ~50
+    b, g, r = img[490, 50]
+    assert b == 0 and g == 0 and r == 0, f"Expected black (0,0,0), got ({b},{g},{r})"

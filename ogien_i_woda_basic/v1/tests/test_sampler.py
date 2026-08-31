@@ -37,3 +37,12 @@ def test_sample_scene_rejects_invalid_panel_count():
         raise AssertionError("panel_count=4 should raise ValueError")
     except ValueError:
         pass
+
+
+def test_corner_marker_cell_never_sampled():
+    """Over a range of seeds, verify that no card is ever sampled at (1,1)."""
+    for seed in range(30):
+        specs = sample_scene(panel_count=3, seed=seed)
+        for spec in specs:
+            for card in spec.cards:
+                assert (card.x, card.y) != (1, 1), f"Card found at (1,1) with seed={seed}"

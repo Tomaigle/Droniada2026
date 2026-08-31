@@ -4,6 +4,9 @@ PANEL_SIZE_CM = (200, 100)
 GRID = (10, 10)
 CELL_CM = (20, 10)
 
+CORNER_MARKER_CELL = (1, 1)
+CORNER_MARKER_BGR = (255, 255, 255)
+
 COLORS = [
     ("czerwona", "#FF0000"),
     ("pomarańczowa", "#FF7A00"),
